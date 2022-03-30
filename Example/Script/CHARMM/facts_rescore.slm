@@ -1,0 +1,63 @@
+#!/bin/bash
+
+#Created by Yujin Wu (wyujin@umich.edu)
+#at 2020/06/08/
+
+#SBATCH -A brooks
+#SBATCH -p brooks
+#SBATCH --job-name=cov-dock
+#SBATCH --time=1:00:00
+#SBATCH --ntasks=1
+#SBATCH --nodes=1
+#SBATCH --array=1-3%1
+#SBATCH --output=slurm.out
+
+## Module Load in Satyr
+module load environments/gcc_7.3.0
+module load openbabel/2.4.1
+module load mmtsb/mmtsb
+module load anaconda/3.5.3.0
+export charmm=/home/wyujin/CHARMM7/ocl-fftdock/install/test/bin/charmm
+
+############################################################################################
+## Prepare work directory 
+## Generate grids 
+############################################################################################
+
+## Prepare ligand pdb files
+j=$[SLURM_ARRAY_TASK_ID]
+pdbID=`head -n $j list | tail -n 1`
+cp ../str/${pdbID}.str ./ligandrtf
+cp ../pdb/${pdbID}.pdb ./ligand.pdb
+
+############################################################################################
+## Calculate energy with facts  
+############################################################################################
+
+# Check if flexible docking is success
+if [ -s dock_result/${j}/ligand_result.dat ] && [ -s dock_result/${j}/sorted_total.dat ] && [ ! -s dock_result/${j}/facts_energy ]; then
+
+	## Prepare charmm scripts
+	cp ../Script/CHARMM/facts.inp ./
+	atom=`grep ACCEPTOR ligandrtf | awk '{print $2}'`
+	sed -i s/ACCEPTOR/$atom/g facts.inp
+	echo $j ACCEPTOR $atom >> run.log
+
+	# Compute energy
+	rm -f facts_energy 
+	for id in `sort -gk 2 dock_result/${j}/sorted_total.dat | head -n 10 | awk '{print $1}'`; do
+		$charmm idx=$j i=$id < facts.inp > output
+		cat energy.dat >> facts_energy	
+		done
+	
+	# Save result
+	mv facts_energy dock_result/${j}
+
+	fi
+
+############################################################################################
+## Clear folder 
+############################################################################################
+
+rm -f *dat tmp* ligand* *crd facts.inp output
+

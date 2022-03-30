@@ -1,0 +1,48 @@
+REMARK  TITLE                                                                         
+REMARK  CREATED BY YUJIN WU                                                           
+REMARK  TRANSLATE ACTIVES AND DECOYS TO THE CENTER OF BINDING POCKET                  
+REMARK  2021/07/25                                                                    
+REMARK   DATE:     7/25/21     21:33:36      CREATED BY USER: yujin                   
+ATOM      1  C1  LIG     1     -96.959  24.849  51.517  1.00  0.00      LIGA
+ATOM      2  O1  LIG     1     -96.868  25.542  50.285  1.00  0.00      LIGA
+ATOM      3  C2  LIG     1     -97.676  24.982  49.260  1.00  0.00      LIGA
+ATOM      4  C3  LIG     1     -97.343  25.636  47.900  1.00  0.00      LIGA
+ATOM      5  H1  LIG     1     -97.243  26.721  48.008  1.00  0.00      LIGA
+ATOM      6  C4  LIG     1     -98.459  25.305  46.888  1.00  0.00      LIGA
+ATOM      7  C5  LIG     1     -98.020  23.971  46.309  1.00  0.00      LIGA
+ATOM      8  C6  LIG     1     -96.515  24.146  46.148  1.00  0.00      LIGA
+ATOM      9  N1  LIG     1     -96.127  25.085  47.221  1.00  0.00      LIGA
+ATOM     10  S   LIG     1     -94.591  25.026  47.902  1.00  0.00      LIGA
+ATOM     11  O2  LIG     1     -94.531  25.750  49.146  1.00  0.00      LIGA
+ATOM     12  O3  LIG     1     -94.116  23.658  47.805  1.00  0.00      LIGA
+ATOM     13  C7  LIG     1     -93.563  25.983  46.776  1.00  0.00      LIGA
+ATOM     14  C8  LIG     1     -92.894  25.348  45.704  1.00  0.00      LIGA
+ATOM     15  C9  LIG     1     -91.910  26.031  44.963  1.00  0.00      LIGA
+ATOM     16  C10 LIG     1     -91.594  27.329  45.330  1.00  0.00      LIGA
+ATOM     17  C11 LIG     1     -92.253  27.930  46.402  1.00  0.00      LIGA
+ATOM     18  C12 LIG     1     -93.239  27.299  47.136  1.00  0.00      LIGA
+ATOM     19  C13 LIG     1     -91.664  29.259  46.584  1.00  0.00      LIGA
+ATOM     20  O4  LIG     1     -91.951  30.073  47.433  1.00  0.00      LIGA
+ATOM     21  C14 LIG     1     -90.598  29.400  45.473  1.00  0.00      LIGA
+ATOM     22  O5  LIG     1     -89.909  30.376  45.279  1.00  0.00      LIGA
+ATOM     23  N2  LIG     1     -90.633  28.196  44.782  1.00  0.00      LIGA
+ATOM     24  C15 LIG     1     -89.817  27.903  43.634  1.00  0.00      LIGA
+ATOM     25  H2  LIG     1     -96.189  25.242  52.186  1.00  0.00      LIGA
+ATOM     26  H3  LIG     1     -96.786  23.776  51.385  1.00  0.00      LIGA
+ATOM     27  H4  LIG     1     -97.939  25.022  51.968  1.00  0.00      LIGA
+ATOM     28  H5  LIG     1     -98.717  25.201  49.527  1.00  0.00      LIGA
+ATOM     29  H6  LIG     1     -97.550  23.894  49.218  1.00  0.00      LIGA
+ATOM     30  H7  LIG     1     -98.485  26.059  46.092  1.00  0.00      LIGA
+ATOM     31  H8  LIG     1     -99.459  25.255  47.333  1.00  0.00      LIGA
+ATOM     32  H9  LIG     1     -98.521  23.729  45.366  1.00  0.00      LIGA
+ATOM     33  H10 LIG     1     -98.236  23.160  47.016  1.00  0.00      LIGA
+ATOM     34  H11 LIG     1     -96.281  24.593  45.175  1.00  0.00      LIGA
+ATOM     35  H12 LIG     1     -96.018  23.176  46.226  1.00  0.00      LIGA
+ATOM     36  H13 LIG     1     -93.103  24.304  45.475  1.00  0.00      LIGA
+ATOM     37  H14 LIG     1     -91.387  25.525  44.157  1.00  0.00      LIGA
+ATOM     38  H15 LIG     1     -93.690  27.791  47.994  1.00  0.00      LIGA
+ATOM     39  H16 LIG     1     -89.155  28.746  43.412  1.00  0.00      LIGA
+ATOM     40  H17 LIG     1     -90.463  27.729  42.770  1.00  0.00      LIGA
+ATOM     41  H18 LIG     1     -89.207  27.017  43.831  1.00  0.00      LIGA
+TER      42      LIG      1
+END

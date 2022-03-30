@@ -1,0 +1,143 @@
+#!/bin/bash
+
+#Created by Yujin Wu (wyujin@umich.edu)
+#at 2020/04/10
+
+#SBATCH -A brooks
+#SBATCH -p gpu 
+#SBATCH --job-name=cov-dock
+#SBATCH --time=5:00:00
+#SBATCH --gres=gpu:1
+#SBATCH --ntasks=1
+#SBATCH --nodes=1
+#SBATCH --array=1-3%1
+#SBATCH --output=slurm.out
+
+############################################################################################
+## Prepare environment 
+############################################################################################
+
+## Module load in satyr
+module load environments/gcc_7.3.0
+module load openbabel/2.4.1
+module load mmtsb/mmtsb
+module load anaconda/3.5.3.0
+export charmm=/home/wyujin/CHARMM7/ocl-fftdock/install/test/bin/charmm
+j=$[SLURM_ARRAY_TASK_ID]
+
+if [ $j -eq 1 ]; then
+	
+	## Prepare scripts
+	cp ../Script/CHARMM/grid.sh ./
+	cp ../Script/CHARMM/genGrid.inp ./ 
+	cp ../Script/CHARMM/openmm_rigid.inp ./
+	cp ../Script/Conformer_generation/mini.inp ./
+	cp ../Script/Conformer_generation/rename.sh ./
+	cp ../Script/Conformer_generation/prepare.sh ./
+	cp ../Script/Conformer_generation/property.py ./ 
+
+	## Prepare folder
+	rm -f *dat grid-emax* [0-9]* output* 
+	rm -rf dock_result
+	mkdir -p dock_result
+	cp ../Script/CHARMM/ligandrtf ./
+	bash grid.sh
+
+	## Print essential scripts
+	more genGrid.inp
+	more openmm_rigid.inp  
+
+	fi
+
+## Prepare ligand files
+pdbID=`head -n $j list | tail -n 1`
+cp ../str/${pdbID}.str ./ligandrtf
+cp ../pdb/${pdbID}.pdb ./ligand.pdb
+cp ../mol2/${pdbID}.mol2 ./ligand.mol2
+
+############################################################################################
+## Docking with different grids 
+## 	num = 100
+## 	copy = 10
+##	100 different covalent potential grids 
+############################################################################################
+
+## Make folder
+rm -rf result dock_pose 
+mkdir -p result dock_pose 
+
+## Generate ligand random conformer
+cp ../Script/Conformer_generation/conformer.py ./ 
+cp ../Script/Conformer_generation/conformer.csv ./ 
+bash prepare.sh
+mv conformer.dat result/ligand_internal
+rm ligand.mol2 ligand.mol tmp*
+
+## Number
+num=10
+copy=100
+total=$[copy * num * 100]
+cSize=`ls optimized/* | wc -l | awk '{print $1}'`
+trial=`expr $cSize / $num`
+reminder=`expr $cSize % $num`
+	
+## Docking with different grids 
+for idx in `seq 0 $trial`; do
+	if [ $idx -eq $trial ] && [ $reminder -gt 0 ]; then
+		$charmm trial=$trial factor=$num num=$reminder copy=$copy total=$total < openmm_rigid.inp > output_${idx}
+		cat initial.dat >> result/initial.dat
+		cat saresult_grid.dat >> result/ligand_result.dat
+	elif [ $idx -lt $trial ]; then 
+		$charmm trial=$idx factor=$num num=$num copy=$copy total=$total < openmm_rigid.inp > output_${idx}
+		cat initial.dat >> result/initial.dat
+		cat saresult_grid.dat >> result/ligand_result.dat
+		fi
+	done
+
+## Clustering
+rm -f conformer_cluster.log
+for conformer in `seq 1 $cSize`; do
+	rm -f tmpcluster
+
+	## Search cluster radius
+	for idx in `seq 5 20`; do
+		radius=`echo "scale=2; $idx / 10" | bc`
+		cluster.pl -kclust -nolsqfit -radius $radius -selmode heavy ${conformer}_* > cluster.log
+		total=`grep @cluster cluster.log | sed 1d | sort -nk 4 | tail -n 1 | awk '{print $4}'`
+		echo $total $radius >> tmpcluster
+		done
+
+	## Find the best clustering radius for a given conformer
+	total=`sort -gk 1 tmpcluster | tail -n 1 | awk '{print $1}'`
+	radius=`awk '{if ($1 == size) print $2}' size=$total tmpcluster | sort -gk 2 | head -n 1`
+	echo $conformer $total $radius >> conformer_cluster.log
+
+	## Find the minimum energy pose in the largest cluster for a given conformer
+	cluster.pl -kclust -nolsqfit -radius $radius -selmode heavy ${conformer}_* > cluster.log
+	init=`grep @cluster cluster.log | sed 1d | sort -nk 4 | tail -n 1 | awk '{print $2}' | cut -b 3-`
+	final=$[init+1]
+	awk "/cluster t.$init /, /cluster t.$final / {print}" cluster.log | sed /cluster/d | awk '{print $2}' > tmp
+	rm -f tmp2.dat
+	for id in `cat tmp`; do
+		pdb=`echo $id | sed s/.pdb//g`
+		awk '{if ($1==name) print}' name=$pdb result/ligand_result.dat >> tmp2.dat
+		done
+	sort -gk 2 tmp2.dat | head -n 1 >> sorted_total.dat
+	total=`sort -gk 2 tmp2.dat | head -n 1 | awk '{print $1}'`
+	cp ${total}.pdb dock_pose/total_${total}.pdb
+
+	done
+
+## Save top rank poses
+for total in `sort -gk 2 sorted_total.dat | head -n 10 | awk '{print $1}'`; do
+	cp dock_pose/total_${total}.pdb result
+	done
+mv conformer_cluster.log sorted_total.dat result
+
+## Clean folder
+mv result dock_result/${j}
+rm output* tmp* ligand.pdb ligandrtf [0-9]*
+
+if [ $j -eq 3 ]; then
+	rm -rf [0-9]* conformer.csv conformer.py.original ligand.crd property.py conformer.crd dock_pose cluster.log tmp* conformer conformer.py prepare.sh rename.sh optimized ligand ligand_rotamer* *.dat genGrid* grid.sh grid-emax* output* mini.inp mini.crd openmm_rigid.inp
+	fi

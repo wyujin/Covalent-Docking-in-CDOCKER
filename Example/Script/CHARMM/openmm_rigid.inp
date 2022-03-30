@@ -1,0 +1,317 @@
+* TITLE
+* Created by Yujin Wu
+* Rigid docking - Docking in grids 
+* Use RDKit to generate multiple random ligand conformers
+* Apply new hydrogen bond grids
+* Use protein reactive atom as an anchor to filter up ligand random rotamer position
+* Maximum translation distance as 2 A 
+* Parallel SA with harder grid potential
+* 2021/03/26
+*
+									
+!-----------------------------------------------------------------------
+! Prepare ligand
+!-----------------------------------------------------------------------
+
+!! Read the topology and parameter files for ligand 
+bomlev -1
+read rtf card name "../Toppar/top_all36_prot.rtf" 
+read rtf card name "../Toppar/top_all36_cgenff.rtf" append
+read param flex card name "../Toppar/par_all36m_prot.prm" 
+read param flex card name "../Toppar/par_all36_cgenff.prm" append
+bomlev 0
+
+stream "./ligandrtf"
+
+!! Build ligand
+read sequ pdb name "./ligand.pdb"
+bomlev -1
+generate LIGA setup
+auto angle dihe
+bomlev 0
+read coor pdb name "./ligand.pdb" resid
+write coor card select segid LIGA end name "ligand.crd"
+
+!! Check if it has lone pair
+!! If it has lone pair -- redistribute this charge
+define lp select type lp* .and. segid LIGA end
+if ?nsel .gt. 0 then
+   set nlp = ?nsel
+   scalar charge stat select .not. type lp* end
+   calc qinc = -?stot / @nlp
+   scalar charge add @qinc select type cl* .or. type br* .or. type i* end
+   delete atom select lp end
+   scalar charge stat
+endif
+
+!! Dimensional analysis
+coor stats select segid LIGA end
+set xcen ?XAVE
+set ycen ?YAVE
+set zcen ?ZAVE
+
+!! Short minimization
+mini sd nstep 50
+mini abnr nstep 1000 tolenr 0.001
+ener
+set ligaener = ?ener
+
+!-----------------------------------------------------------------------
+! Prepare OpenMM system
+! Ligand # = # of ligand conformers * # of copy for each conformer
+!-----------------------------------------------------------------------
+
+!! ICB array for bond parameters
+update atom switch vswitch cutnb 12 ctofnb 10 ctonnb 8 vdwe elec rdie epsilon 3
+
+!! Read grid potential for OpenMM docking
+open unit 31 read unform name grid-emax-15-mine--120-maxe--2.bin
+open unit 32 read unform name grid-emax-3-mine--20-maxe-40.bin
+OMMD grid UNIS 31 UNIH 32 grhb
+close unit 31
+close unit 32
+
+!! Set up numbers for loop 
+set i = 1 				! Count number
+set idxtot = 0				! index of total attemps
+set idxnum = 1				! index of loop num 
+set idxcopy = 1 			! index of ligand copy
+calc idx = @trial * @factor + 1		! index of all ligand conformer
+calc numcopy = @num * @copy		! total openmm docking trials
+OMMD build sele segid LIGA end ncopy @numcopy grhb nofi 
+
+!-----------------------------------------------------------------------
+! Generate random ligand conformer and its position
+! Translation 	--> maximum 2 A
+! Rotation	--> maximum 360 degree
+!-----------------------------------------------------------------------
+
+!! Generate random rotamer
+open unit 61 write form name "initial.dat"
+label ligandrotamer
+
+!! Brief minimization of ligand 
+read coor pdb name "optimized/@IDX.pdb" resid
+mini sd nstep 50 tolenr 0.01
+mini abnr nstep 50 tolenr 0.005
+
+!! Ligand rotamer energy
+inte select segid LIGA end                      ! Ligand energy
+set tmpener = ?ener
+write coor card select segid LIGA end name "ligand_rotamer.crd"
+
+!! Energy cut off in docking
+inte select segid LIGA end			! Ligand energy
+set ligaener = ?ener
+calc totalener = @ligaener + 500		! Total energy
+
+!! Randomlize its position and orientation
+!! If fits the criterion then saved for OpenMM docking 
+label conformerPose
+
+      ! read in the conformer
+      set tmpidx = 1				! Number of configuration saved after second mutation
+      read coor select segid LIGA end card name "ligand_rotamer.crd"
+
+      ! rotation
+      calc theta ( ?RANDOM - 0.5 ) * ( ?PI )
+      calc phi ( ?RANDOM ) * ( ?PI ) * 2
+      calc XDIR cos(@theta) * cos(@phi)
+      calc YDIR cos(@theta) * sin(@phi)
+      calc ZDIR sin(@theta)
+      calc rphi ( ?RANDOM ) * 360
+      coor rotate xdir @XDIR ydir @YDIR zdir @ZDIR xcen @xcen ycen @ycen zcen @zcen phi @rphi select segid LIGA end
+
+      ! translation
+      coor stats select segid LIGA end
+      calc xtran ( ?RANDOM - 0.5 ) * 2 * 2
+      calc ytran ( ?RANDOM - 0.5 ) * 2 * 2
+      calc ztran ( ?RANDOM - 0.5 ) * 2 * 2
+      coor trans xdir @xtran ydir @ytran zdir @ztran select segid LIGA end
+
+      ! read hard grid potential
+      open unit 30 read unform name "grid-emax-3-mine--20-maxe-40.bin"
+      grid read unit 30 select segid LIGA end GRHB
+      close unit 30
+      
+      ! minimize with hard potential
+      mini sd nstep 100
+      mini abnr nstep 500 tolenr 0.01
+      grid off
+      grid clear	
+
+      ! read native potential
+      open unit 30 read unform name "grid-emax-100-mine--100-maxe-100.bin"
+      grid read unit 30 select segid LIGA end GRHB
+      close unit 30
+
+      ! minimize with native potential
+      mini sd nstep 50
+      mini conj nstep 100 tolenr 0.01
+      set dockener = ?ener
+      set dockhbond = ?grhb
+      grid off
+      grid clear	
+	
+      ! check num of total attemps
+      ! if more than @total rotamer generated, then kill job
+      incr idxtot by 1
+      if @idxtot .gt. @total stop
+
+      ! energy cutoff
+      ! if fits the criteria, then move forward to small mutation and save for OpenMM docking
+      if @dockener .ge. @totalener goto conformerPose	      
+      if @dockhbond .ge. -0.1 goto conformerPose
+
+      ! save conformer information  
+      set Econf = @dockener
+      write coor card select segid LIGA end name "mini.crd"
+
+      ! mutate conformer position
+      label mutatePose
+            read coor select segid LIGA end card name "mini.crd"
+
+            ! rotation
+            calc theta ( ?RANDOM - 0.5 ) * ( ?PI )
+            calc phi ( ?RANDOM ) * ( ?PI ) * 2
+            calc XDIR cos(@theta) * cos(@phi)
+            calc YDIR cos(@theta) * sin(@phi)
+            calc ZDIR sin(@theta)
+            calc tmpphi ( ?RANDOM ) * 360
+            if @tmpphi .lt. 180 then
+               calc rphi @tmpphi / 6
+            else
+               calc rphi 390 - @tmpphi / 6
+               endif
+            coor rotate xdir @XDIR ydir @YDIR zdir @ZDIR xcen @xcen ycen @ycen zcen @zcen phi @rphi select segid LIGA end
+
+            ! translation
+            coor stats select segid LIGA end
+            calc xtran ( ?RANDOM - 0.5 ) * 2 * 1
+            calc ytran ( ?RANDOM - 0.5 ) * 2 * 1
+            calc ztran ( ?RANDOM - 0.5 ) * 2 * 1
+            coor trans xdir @xtran ydir @ytran zdir @ztran select segid LIGA end
+
+            ! read hard grid potential
+            open unit 30 read unform name "grid-emax-3-mine--20-maxe-40.bin"
+            grid read unit 30 select segid LIGA end GRHB
+            close unit 30
+
+            ! minimize with hard potential
+            mini sd nstep 100
+            mini abnr nstep 500 tolenr 0.01
+            grid off
+            grid clear
+
+            ! read native potential
+            open unit 30 read unform name "grid-emax-100-mine--100-maxe-100.bin"
+            grid read unit 30 select segid LIGA end GRHB
+            close unit 30
+
+            ! minimize with native potential
+            mini sd nstep 50
+            mini abnr nstep 100 tolenr 0.01
+            set dockener = ?ener
+            set dockhbond = ?grhb
+            grid off
+            grid clear
+
+            ! energy cutoff
+            calc DEner = @dockener - @Econf
+            if @DEner .gt. 0 then
+               calc prob = exp(-@DEner)
+               if ?random .gt. @prob goto mutatePose
+               endif 
+
+            ! save result
+            read coor comp select segid LIGA end card name "ligand.crd" resid
+            coor rms select segid LIGA .and. (.not. type *H*) end
+            set dockrmsd = ?rms
+            write title unit 61
+            * @idx @i @dockener @dockhbond @dockrmsd
+            *
+
+            ! loop
+            OMMD setc idxc @idxcopy
+            incr i by 1
+            incr tmpidx by 1
+            incr idxcopy by 1
+            if @tmpidx .le. 10 goto mutatePose
+
+      ! loop
+      if @i .gt. @copy then
+         incr idxnum by 1
+         incr idx by 1
+         if @idxnum .le. @num then
+	    set i = 1
+            goto ligandrotamer 
+         endif
+      endif
+      if @idxcopy .le. @numcopy goto conformerPose 
+grid clear
+close unit 61
+
+!-----------------------------------------------------------------------
+! OpenMM docking -- Parallel SA 
+!-----------------------------------------------------------------------
+
+OMMD CGRS SOFT 1 HARD 0 emax 15 mine -120.0 maxe -2.0 eps 3
+OMMD SIAN NSTE 3000 FIRST 300 FINAT 700 NHRQ 50 INCT 1
+
+OMMD CGRS SOFT 1 HARD 0 emax 15 mine -120.0 maxe -2.0 eps 3
+OMMD SIAN NSTE 14000 FIRST 700 FINAT 300 NHRQ 50 INCT -1
+
+OMMD CGRS SOFT 0 HARD 1 emax 3 mine -20 maxe 40.0 eps 3
+OMMD SIAN NSTE 7000 FIRST 500 FINAT 300 NHRQ 50 INCT -1
+
+OMMD CGRS SOFT 0 HARD 1 emax 30 mine -200 maxe 400.0 eps 3
+OMMD SIAN NSTE 3000 FIRST 400 FINAT 50 NHRQ 50 INCT -1
+
+!-----------------------------------------------------------------------
+! Final result 
+!-----------------------------------------------------------------------
+
+!! Read in Grid
+open unit 30 read unform name "grid-emax-100-mine--100-maxe-100.bin"
+grid read unit 30 select segid LIGA end GRHB
+close unit 30
+
+!! Output docking results after grid minimization
+open unit 51 write form name "saresult_grid.dat"
+set i = 1
+set idxnum = 1
+set idxcopy = 1
+calc idx = @trial * @factor + 1
+
+label LoopGrid 
+      ! copy coordinate from OpenMM_dock results into the main coordinates
+      OMMD COOR IDXC @idxcopy
+
+      ! Docking result
+      mini sd nstep 50
+      mini abnr nstep 1000 tolenr 0.001
+      set dockener = ?ener
+      set dockhbond = ?GRHB
+      read coor comp select segid LIGA end card name "ligand.crd" resid
+      coor rms select segid LIGA .and. (.not. type *H*) end
+      set dockrmsd = ?rms
+
+      ! Save result
+      write coor pdb select segid LIGA end name "@IDX_@I.pdb"
+      write title unit 51
+      * @idx_@i @dockener @dockhbond @dockrmsd
+      *
+
+      incr idxcopy by 1
+      incr i by 1
+      if @i .gt. @copy then
+         incr idxnum by 1
+         incr idx by 1
+         if @idxnum .le. @num then
+	    set i = 1
+         endif
+      endif
+      if @idxcopy .le. @numcopy goto LoopGrid
+
+stop
+

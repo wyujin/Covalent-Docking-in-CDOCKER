@@ -1,0 +1,42 @@
+* TITLE
+* Rigid Docking Grid 
+* Created by Yujin Wu
+*
+
+!----------------------------------------------------------------------
+! Prepare protein 
+!----------------------------------------------------------------------
+
+stream "./coor.inp"
+
+!----------------------------------------------------------------------
+! Generate Grid with FFTG 
+!----------------------------------------------------------------------
+
+if @?gupid eq 0 set gpuid = 0
+
+!! Update nonbond parameter for grid potential
+update atom switch vswitch cutnb 999 ctonnb 999 ctofnb 999 -
+       soft emax @EMAX vdwe mine @MINE maxe @MAXE elee -
+       rdie epsilon 3
+
+!! Read in vdW radii for grid generation
+open unit 1 read form name "../Toppar/fftdock_c36prot_cgenff_probes.txt"
+fftg radii unit 1 gpuid @gpuid
+close unit 1
+
+!! Generate formatted grid potential
+fftg pgen xmax @xmax ymax @xmax zmax @xmax -
+          xcen @xcen ycen @ycen zcen @zcen -
+          rcta @rcta rctb @rctb hmax @hmax -
+          dgrid @space -
+          emax @emax mine @mine maxe @maxe rdie epsilon 3 -
+          select all end gpuid @gpuid
+
+!! Output
+open unit 1 write unform name grid-emax-@EMAX-mine-@MINE-maxe-@MAXE.bin
+fftg pwri unform unit 1 gpuid @gpuid grhb
+close unit 1
+
+stop
+

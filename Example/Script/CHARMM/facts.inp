@@ -1,0 +1,90 @@
+* TITLE
+* Flexible docking - Minimize with explicit protein 
+* Calculate energy with facts
+* 2020/09/09
+*
+ 
+!-----------------------------------------------------------------------
+! Topology file
+!-----------------------------------------------------------------------
+
+!! Read the topology and parameter files
+bomlev -1
+read rtf card name "../Toppar/top_all36_prot.rtf"
+read rtf card name "../Toppar/top_all36_cgenff.rtf" append
+read param flex card name "../Toppar/par_all36m_prot.prm"
+read param flex card name "../Toppar/par_all36_cgenff.prm" append
+bomlev 0
+
+stream "ligandrtf"
+
+!-----------------------------------------------------------------------
+! Build system 
+!-----------------------------------------------------------------------
+
+!! Build ligand
+read sequ pdb name "ligand.pdb"
+bomlev -1
+generate LIGA setup
+auto angle dihe
+bomlev 0
+read coor pdb name "ligand.pdb" resid
+
+!! Check if it has lone pair
+!! If it has lone pair -- redistribute this charge
+define lp select type lp* .and. segid LIGA end
+if ?nsel .gt. 0 then
+   set nlp = ?nsel
+   scalar charge stat
+   set orgc = ?stot
+   scalar charge stat select .not. type lp* end
+   set lpc = ?stot
+   calc qinc = (@orgc - @lpc) / @nlp
+   scalar charge add @qinc select type cl* .or. type br* .or. type i* end
+   delete atom select lp end
+   scalar charge stat
+endif
+
+!! Build protein
+read psf card name "protein.psf" append
+read coor pdb name "protein.pdb" resi
+
+!! Modify coordinates
+read coor pdb name "dock_result/@IDX/total_@I.pdb" resid
+
+!-----------------------------------------------------------------------
+! Calculate energy with facts 
+!-----------------------------------------------------------------------
+
+!! Set parameter 
+faster on
+nbond nbxmod 5 atom cdiel eps 1 shift vatom vdistance vswitch -
+      cutnb 14.0 ctofnb 12.0 ctonnb 10.0 e14fac 1.0 wmin 1.5
+scalar wmain = radius
+facts tcps 22 teps 1 gamm 0.015 tavw conc 0.1 temp 298
+
+!! FACTS MD
+cons fix select ( all .and. .not. segid LIGA ) .or. -
+                ( segid LIGA .and. type ACCEPTOR ) end 
+mini abnr nstep 1000 tolgrd 0.001
+cons fix select none end
+
+!! Energy term
+energy
+set PLtotal = ?ener
+coor tranlate xdir 400 ydir 400 zdir 400 select segid LIGA end
+energy
+set PLsep = ?ener
+inte select all .and. .not. segid LIGA end
+set protener = ?ener
+inte select segid LIGA end
+set ligaener = ?ener
+
+!! Output
+open unit 41 write form name "energy.dat"
+write title unit 41
+* @I @PLtotal @PLsep @protener @ligaener
+*
+
+stop
+
